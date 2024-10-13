@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security
+from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi_jwt import (
@@ -188,13 +188,24 @@ async def getKota():
 
 @app.get('/checkout')
 async def getTransaksi(
-   user: JwtAuthorizationCredentials = Security(access_security)
+  status: Optional[str] = Query(None),
+  user: JwtAuthorizationCredentials = Security(access_security),
 ):
   cursor = conn.cursor()
   # kalo ad error object nontype is non subscriptable. itu logout
   try:
-    query = "SELECT * FROM transaksi WHERE email_cust = %s ORDER BY tgl_trans DESC"
-    cursor.execute(query, (user['email'], ))
+    if status is not None:
+      query = """
+        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute FROM transaksi t 
+        INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+        INNER JOIN bis b ON dt.id_bis = b.id_bis
+        WHERE t.email_cust = %s AND t.status_trans = %s ORDER BY t.tgl_trans DESC
+      """
+
+      cursor.execute(query, (user['email'], status.upper()))
+    else:
+      query = "SELECT * FROM transaksi WHERE email_cust = %s ORDER BY tgl_trans DESC"
+      cursor.execute(query, (user['email'], ))
 
     column_name = []
     for kol in cursor.description:
@@ -207,9 +218,43 @@ async def getTransaksi(
       return items
     else:
       subject = pd.DataFrame(items, columns=column_name)
-      return subject.to_dict('records')[0] #index 0 ini kalau cmn mw ambil 1 data
-  
+      return subject.to_dict('records')[0] if status is None else subject.to_dict('records')  #index 0 ini kalau cmn mw ambil 1 data
+
   except HTTPException as e:
+    # print(cursor.description)
+    # print(status)
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  
+  finally:
+    cursor.close()
+
+@app.get('/checkout/{id_trans}')
+async def getTransaksi(
+  id_trans: str,
+  user: JwtAuthorizationCredentials = Security(access_security),
+):
+  cursor = conn.cursor()
+  # kalo ad error object nontype is non subscriptable. itu logout
+  try:
+    query = "SELECT * FROM transaksi WHERE email_cust = %s AND id_trans = %s ORDER BY tgl_trans DESC"
+    cursor.execute(query, (user['email'], id_trans))
+
+    column_name = []
+    for kol in cursor.description:
+      column_name.append(kol[0])
+    
+    items = cursor.fetchall()
+
+    # cek array items kosong atau nda
+    if(not items):
+      return items
+    else:
+      subject = pd.DataFrame(items, columns=column_name)
+      return subject.to_dict('records')[0]  #index 0 ini kalau cmn mw ambil 1 data
+
+  except HTTPException as e:
+    # print(cursor.description)
+    # print(status)
     return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
   
   finally:
@@ -225,20 +270,11 @@ async def bayar(
   tgl_balik: str = Form(...),
   jlh_penumpang: int = Form(...),
   hrg_tiket_perorg: float = Form(...),
-  total_harga: float = Form(...)
+  total_harga: float = Form(...),
+  id_paket: Optional[str] = Form(None)
 ):
-  
-  # print(id_bis)
-  # print(tgl_pergi)
-  # print(tgl_balik)
-  # print(jlh_penumpang)
-  # print(hrg_tiket_perorg)
-  # print(total_harga)
-  # return
-
-  #print(buktiByr)
   # Note kalo error not all arguments converted during string formatting.
-  # itu bs jadi kurang kolom, atau kurang %s di query sql
+  # itu bs jadi kurang kolom, kurang value, atau kurang %s di query sql
   id_trans = getLastTrans()
   try:
     cursor = conn.cursor()
@@ -246,55 +282,109 @@ async def bayar(
     if not os.path.exists(IMAGEDIR):
         os.makedirs(IMAGEDIR)
 
-    # Check if bukti bayar kosong
+    # Check if bukti bayar kosong. ini byr cash
     if not buktiByr:
-      # query 
-      q1 = """
-        INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
-        values(%s, %s, %s, %s, %s, %s, %s, %s)
-      """
-      cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'cash') )
-      conn.commit()
-      
-      #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-      q2 = """
-        INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-        VALUES(%s, %s, %s, %s, %s, %s)
-      """
-      cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
-      conn.commit()
 
-      return {"message": "Transaksi Cash Oke"}
+      if id_paket is None:
+        # query 
+        q1 = """
+          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
+          values(%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'cash') )
+        conn.commit()
+        
+        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
+        q2 = """
+          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
+          VALUES(%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+        conn.commit()
+
+        #return {"message": "Transaksi Cash Oke"}
       # raise HTTPException(status_code=400, detail="No file provided")
+      else:
+        
+        # Jika Psn Lwt Paket
+        q1 = """
+          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, id_paket) 
+          values(%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'cash', id_paket) )
+        conn.commit()
+        
+        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
+        q2 = """
+          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
+          VALUES(%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+        conn.commit()
+
+        #return {"message": "Transaksi Cash Oke"}
+
     else:
-      # kondisi kalo bukti bayar ga kosong
-      # Create a unique filename
-      filename = f"{uuid.uuid4()}.jpg"
-      file_location = os.path.join(IMAGEDIR, filename)
+      # Kondisi kalo checkout tanpa paket.
+      if id_paket is None:
+        # kondisi kalo bukti bayar ga kosong
+        # Create a unique filename
+        filename = f"{uuid.uuid4()}.jpg"
+        file_location = os.path.join(IMAGEDIR, filename)
 
-      # Read and save the file
-      content = await buktiByr.read()
-      with open(file_location, "wb") as f:
-          f.write(content)
-      
-      # query 
-      q1 = """
-        INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
-        values(%s, %s, %s, %s, %s, %s, %s, %s)
-      """
-      cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'transfer') )
-      conn.commit()
-      
-      #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-      q2 = """
-        INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-        VALUES(%s, %s, %s, %s, %s, %s)
-      """
-      cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
-      conn.commit()
+        # Read and save the file
+        content = await buktiByr.read()
+        with open(file_location, "wb") as f:
+            f.write(content)
+        
+        # query 
+        q1 = """
+          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
+          values(%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'transfer') )
+        conn.commit()
+        
+        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
+        q2 = """
+          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
+          VALUES(%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+        conn.commit()
 
-      return {"message": "File uploaded successfully", "filename": filename}
+        #return {"message": "File uploaded successfully", "filename": filename}
+      else:
+        # kondisi kalo bukti bayar ga kosong
+        # Create a unique filename
+        filename = f"{uuid.uuid4()}.jpg"
+        file_location = os.path.join(IMAGEDIR, filename)
 
+        # Read and save the file
+        content = await buktiByr.read()
+        with open(file_location, "wb") as f:
+            f.write(content)
+        
+        # query 
+        q1 = """
+          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, id_paket) 
+          values(%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'transfer', id_paket) )
+        conn.commit()
+        
+        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
+        q2 = """
+          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
+          VALUES(%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+        conn.commit()
+
+        #return {"message": "File uploaded successfully", "filename": filename}
+
+
+    return JSONResponse(content={"Pesan": "Transaksi Sukses"}, status_code=200)
   except Exception as e:
     print(str(e))
     raise HTTPException(status_code=500, detail=str(e))

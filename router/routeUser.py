@@ -39,6 +39,38 @@ def fnUser(
 
   return subject
 
+@app.post('/register')
+async def fnRegis(
+  request: Request
+) :
+  cursor = conn.cursor()
+
+  try:
+    data = await request.json()
+    username = data['username']
+    email = data['email']
+    passwd = data['passwd']
+
+    #Cek Email ad atau nd
+    query = "SELECT * FROM users WHERE email = %s"
+    cursor.execute(query, (email, ))
+    itemEmail = cursor.fetchall()
+
+    if len(itemEmail) > 0:
+      return JSONResponse(content={"Error": "Email Sudah Terdaftar"}, status_code=409) #code duplicate
+    else:
+      insQuery = "INSERT INTO users(username, email, passwd) VALUES(%s, %s, %s)"
+      cursor.execute(insQuery, (username, email, passwd))
+      conn.commit()
+
+      return JSONResponse(content={"Success": "Email Terdaftar"}, status_code=200)
+
+
+  except HTTPException as e:
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  finally:
+    cursor.close()
+
 @app.post('/login')
 async def fnLogin(
   request: Request
