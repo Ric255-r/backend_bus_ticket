@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Request, HTTPException, Security
-from fastapi.responses import JSONResponse
+from typing import Optional
+import uuid
+from fastapi import APIRouter, File, Form, Request, HTTPException, Security, UploadFile
+from fastapi.responses import JSONResponse, FileResponse
 from koneksi import conn
 from fastapi_jwt import (
   JwtAccessBearerCookie,
@@ -8,8 +10,16 @@ from fastapi_jwt import (
 )
 from jwt_auth import access_security, refresh_security
 import pandas as pd
+import os
 
 app = APIRouter()
+
+IMAGEDIR = "images/profile"
+
+@app.get('/fotoprofile/{filename}')
+def fnProfile(filename: str):
+  img_path = os.path.join(IMAGEDIR, filename)
+  return FileResponse(img_path, media_type='image/png')
 
 @app.get('/user')
 def fnUser(
@@ -122,5 +132,87 @@ async def fnLogin(
     }
   except HTTPException as e:
     return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  finally:
+    cursor.close()
+
+@app.put('/updateProfile')
+async def updateProfile(
+  user : JwtAuthorizationCredentials = Security(access_security),
+  fotoProfile: Optional[UploadFile] = File(None),
+  username: str = Form(...),
+  email: str = Form(...),
+  nohp: str = Form(...)
+) :
+  try:
+    # print(fotoProfile)
+    # print(username)
+    # print(email)
+    # print(nohp)
+
+    cursor = conn.cursor()
+
+    if fotoProfile is None:
+      q1 = """
+        UPDATE users SET username = %s, no_hp = %s
+        WHERE id = %s
+      """
+
+      cursor.execute(q1, (username, nohp, user['id']))
+      conn.commit()
+    else:
+      filename = f"{uuid.uuid4()}.png"
+      file_location = os.path.join(IMAGEDIR, filename)
+
+      #saveFile
+      content = await fotoProfile.read()
+      with open(file_location, "wb") as f:
+        f.write(content)
+
+      q1 = """
+        UPDATE users SET username = %s, profile_picture = %s, no_hp = %s
+        WHERE id = %s
+      """
+
+      cursor.execute(q1, (username, filename, nohp, user['id']))
+      conn.commit()
+
+    return JSONResponse(content={"Pesan": "Sukses Update"}, status_code=200)
+
+  except HTTPException as e:
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  
+  finally:
+    cursor.close()
+
+@app.put('/changePass')
+async def fnChangePass(
+  request: Request,
+  user: JwtAuthorizationCredentials = Security(access_security),
+) :
+  try:
+    cursor = conn.cursor()
+    data = await request.json()
+
+    oldPasswd= data['oldPass']
+    newPasswd= data['newPass']
+
+    q1 = "SELECT * FROM users WHERE email = %s AND passwd = %s"
+    cursor.execute(q1, (user['email'], oldPasswd))
+
+    items = cursor.fetchall()
+
+    if not items:
+      return JSONResponse(content={"Error": "Password Lama Tidak Cocok"}, status_code=401)
+    
+    else:
+      q2 = "UPDATE users SET passwd = %s WHERE email = %s"
+      cursor.execute(q2, (newPasswd, user['email']))
+      conn.commit()
+
+      return JSONResponse(content={"Success": "Password Sudah Diganti"}, status_code=200)
+
+  except HTTPException as e:
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+
   finally:
     cursor.close()

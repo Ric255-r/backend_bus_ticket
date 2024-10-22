@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi_jwt import (
   JwtAccessBearerCookie,
   JwtAuthorizationCredentials,
@@ -17,6 +17,11 @@ from typing import Optional, Union
 app = APIRouter()
 
 IMAGEDIR = "images/buktiByr/"
+
+@app.get('/buktiByr/{filename}')
+def fnBuktiByr(filename: str):
+  img_path = os.path.join(IMAGEDIR, filename)
+  return FileResponse(img_path, media_type='image/png')
 
 def getLastTrans():
   """
@@ -196,9 +201,10 @@ async def getTransaksi(
   try:
     if status is not None:
       query = """
-        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute FROM transaksi t 
+        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
         INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
         INNER JOIN bis b ON dt.id_bis = b.id_bis
+        LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
         WHERE t.email_cust = %s AND t.status_trans = %s ORDER BY t.tgl_trans DESC
       """
 
@@ -236,7 +242,18 @@ async def getTransaksi(
   cursor = conn.cursor()
   # kalo ad error object nontype is non subscriptable. itu logout
   try:
-    query = "SELECT * FROM transaksi WHERE email_cust = %s AND id_trans = %s ORDER BY tgl_trans DESC"
+    query = """
+      SELECT t.*, dt.tgl_pergi, dt.tgl_balik, dt.jlh_penumpang, dt.hrg_tiket_perorg, b.jasa_travel,
+      b.nama_bis, kb.nama_kelas, r.kota_awal, r.kota_akhir, kb.harga, r.waktu_berangkat, r.waktu_sampai
+      FROM transaksi t
+      INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+      INNER JOIN bis b ON dt.id_bis = b.id_bis
+      INNER JOIN kelas_bis kb ON b.id_kelas_bis = kb.id_kelas
+      INNER JOIN rute r ON b.id_rute = r.id
+      WHERE t.email_cust = %s AND t.id_trans = %s
+      LIMIT 1
+    """
+    #query = "SELECT * FROM transaksi WHERE email_cust = %s AND id_trans = %s ORDER BY tgl_trans DESC"
     cursor.execute(query, (user['email'], id_trans))
 
     column_name = []
