@@ -5,6 +5,7 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from router.routeUser import app as app_user
 from router.routeTransaction import app as app_transaction
+from router.routeAdmin import app as app_admin
 
 app = FastAPI()
 app.add_middleware(
@@ -21,6 +22,7 @@ main_router = APIRouter()
 #include router2 yang dibuat ke main router
 main_router.include_router(app_user)
 main_router.include_router(app_transaction)
+main_router.include_router(app_admin)
 
 #masukkan main router ke fastapi app
 app.include_router(main_router, prefix="/api")
@@ -28,7 +30,7 @@ app.include_router(main_router, prefix="/api")
 # bawaan default
 if __name__ == "__main__":
   import uvicorn
-  uvicorn.run(app, host="192.168.100.59", port=5500)
+  uvicorn.run(app, host="192.168.50.47", port=5500)
 
 
 #note for self.

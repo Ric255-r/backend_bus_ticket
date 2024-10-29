@@ -6,6 +6,8 @@ from fastapi_jwt import (
   JwtAuthorizationCredentials,
   JwtRefreshBearer
 )
+from router.routeAdmin import idPaket
+
 import pandas as pd
 from jwt_auth import access_security
 from koneksi import conn
@@ -70,16 +72,22 @@ def getLastTrans():
     cursor.close()
 
 @app.get('/listbis')
-async def getListBis():
+async def getListBis(
+  id_bis: Optional[str] = Query(None)
+):
   cursor = conn.cursor()
   try:
     query = f"""
       SELECT b.*, kb.*, r.* from bis b 
       LEFT JOIN kelas_bis kb ON b.id_kelas_bis = kb.id_kelas
       LEFT JOIN rute r ON b.id_rute = r.id 
+      {'WHERE b.id_bis = %s' if id_bis is not None else ""}
     """
 
-    cursor.execute(query)
+    if id_bis is not None:
+      cursor.execute(query, (id_bis, ))
+    else:
+      cursor.execute(query)
 
     column_name = []
     for kol in cursor.description:
@@ -97,7 +105,6 @@ async def getListBis():
     return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
   finally:
     cursor.close()
-
 
 @app.get('/listbis/{nama_bis}')
 async def listBisParameter(nama_bis: Optional[str] = None):
@@ -132,37 +139,78 @@ async def listBisParameter(nama_bis: Optional[str] = None):
   finally:
     cursor.close()
 
+def serialize_data(data):
+  converted_data = []
+  for item in data:
+    converted_item = []
+    
+    for value in item:
+      if value is not None:
+        converted_item.append(str(value))
+      else:
+        converted_item.append('')
+
+    # # Convert each element in the tuple to string versi shorthand
+    # converted_item = [str(value) if value is not None else '' for value in item]
+
+    converted_data.append(tuple(converted_item))  # Append as a tuple
+  return converted_data
+
+# Note Kalo Error
+# ValueError: Out of range float values are not JSON compliant
+# Langsung hajar konversi ke string aja.
+
 @app.get('/cekpaket')
-async def getIsiPaket():
+async def getIsiPaket(
+  id_paket: Optional[str] = Query(None)
+):
   cursor = conn.cursor()
   try:
     query = f"""
-      SELECT p.*, b.nama_bis,
-        json_agg(
-          jsonb_build_object(
-            'id_benefit', bw.id_benefit,
-            'benefit', bw.benefit
-          )
+      SELECT 
+        p.*, b.nama_bis,
+        COALESCE( 
+          json_agg(
+            jsonb_build_object(
+              'id_benefit', bw.id_benefit,
+              'benefit', bw.benefit
+            )
+          ) FILTER (WHERE bw.id_benefit IS NOT NULL), 
+          '[]'::json
         ) AS detailpaket
-        FROM paketwisata p
-        INNER JOIN benefitwisata bw ON p.id_benefit = bw.id_benefit
-        INNER JOIN bis b ON p.id_bis = b.id_bis
-        GROUP BY p.id_paket, b.nama_bis
+      FROM 
+        paketwisata p
+      LEFT JOIN 
+        benefitwisata bw ON p.id_benefit = bw.id_benefit
+      LEFT JOIN 
+        bis b ON p.id_bis = b.id_bis
+      {'WHERE p.id_paket = %s' if id_paket is not None else ""}
+      GROUP BY 
+        p.id_paket, b.nama_bis;
     """
-    cursor.execute(query)
+    if id_paket is not None:
+      cursor.execute(query, (id_paket, ))
+    else: 
+      cursor.execute(query)
 
     column_name = []
     for kol in cursor.description:
       column_name.append(kol[0])
 
-    items = cursor.fetchall()
+    items = serialize_data(cursor.fetchall())
 
     df = pd.DataFrame(items, columns=column_name)
     data = df.to_dict('records')
 
     return data
+  
   except HTTPException as e:
+  
+    print(e)
     return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  except ValueError as e:
+    print(f"Error occurred: {e}")
+ 
   finally:
     cursor.close()
 
@@ -193,7 +241,7 @@ async def getKota():
 
 @app.get('/checkout')
 async def getTransaksi(
-  status: Optional[str] = Query(None),
+  status: Optional[str] = Query(None), # Untuk ambil queryString
   user: JwtAuthorizationCredentials = Security(access_security),
 ):
   cursor = conn.cursor()
