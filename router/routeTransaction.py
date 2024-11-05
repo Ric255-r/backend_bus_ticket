@@ -25,6 +25,16 @@ def fnBuktiByr(filename: str):
   img_path = os.path.join(IMAGEDIR, filename)
   return FileResponse(img_path, media_type='image/png')
 
+@app.get('/fotoPaket/{filename}')
+def fnGbrPaket(filename: str):
+  img_path = os.path.join("images/gbrpaket", filename)
+  return FileResponse(img_path, media_type='image/png')
+
+@app.get('/fotoLogoBis/{filename}')
+def fnGbrPaket(filename: str):
+  img_path = os.path.join("images/logoBis", filename)
+  return FileResponse(img_path, media_type='image/png')
+
 def getLastTrans():
   """
     TEST QUERY UNTUK CHECKOUT
@@ -168,7 +178,7 @@ async def getIsiPaket(
   try:
     query = f"""
       SELECT 
-        p.*, b.nama_bis,
+        p.*, b.nama_bis, b.id_rute,
         COALESCE( 
           json_agg(
             jsonb_build_object(
@@ -186,7 +196,7 @@ async def getIsiPaket(
         bis b ON p.id_bis = b.id_bis
       {'WHERE p.id_paket = %s' if id_paket is not None else ""}
       GROUP BY 
-        p.id_paket, b.nama_bis;
+        p.id_paket, b.nama_bis, b.id_rute;
     """
     if id_paket is not None:
       cursor.execute(query, (id_paket, ))
@@ -218,7 +228,13 @@ async def getIsiPaket(
 async def getKota():
   cursor = conn.cursor()
   try:
-    query = "SELECT * FROM kota"
+    # Query Awal. diganti karena merasa tidak guna
+    # query = "SELECT * FROM kota"
+    # cursor.execute(query)
+    query = """
+      SELECT kota_awal AS nama_kota FROM rute 
+      UNION SELECT kota_akhir FROM rute
+    """
     cursor.execute(query)
 
     column_name = []
@@ -249,7 +265,7 @@ async def getTransaksi(
   try:
     if status is not None:
       query = """
-        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
+        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket, pw.gbrpaket FROM transaksi t 
         INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
         INNER JOIN bis b ON dt.id_bis = b.id_bis
         LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket

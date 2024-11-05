@@ -120,6 +120,7 @@ async def fnLogin(
 
     #Hilangkan record passwd
     subject.pop('passwd', None)
+    subject.pop("created_at", None)
 
     #Buat token
     access_token = access_security.create_access_token(subject=subject)
@@ -137,27 +138,33 @@ async def fnLogin(
 
 @app.put('/updateProfile')
 async def updateProfile(
-  user : JwtAuthorizationCredentials = Security(access_security),
   fotoProfile: Optional[UploadFile] = File(None),
   username: str = Form(...),
   email: str = Form(...),
-  nohp: str = Form(...)
+  nohp: str = Form(...),
+  jk: bool = Form(...),
+  user : JwtAuthorizationCredentials = Security(access_security),
+
 ) :
+  print(fotoProfile)
+  print(username)
+  print(email)
+  print(nohp)
+  print(jk)
+
+  # return
+
   try:
-    # print(fotoProfile)
-    # print(username)
-    # print(email)
-    # print(nohp)
 
     cursor = conn.cursor()
 
     if fotoProfile is None:
       q1 = """
-        UPDATE users SET username = %s, no_hp = %s
+        UPDATE users SET username = %s, no_hp = %s, jk = %s
         WHERE id = %s
       """
 
-      cursor.execute(q1, (username, nohp, user['id']))
+      cursor.execute(q1, (username, nohp, jk, user['id']))
       conn.commit()
     else:
       filename = f"{uuid.uuid4()}.png"
@@ -169,11 +176,11 @@ async def updateProfile(
         f.write(content)
 
       q1 = """
-        UPDATE users SET username = %s, profile_picture = %s, no_hp = %s
+        UPDATE users SET username = %s, profile_picture = %s, no_hp = %s, jk = %s
         WHERE id = %s
       """
 
-      cursor.execute(q1, (username, filename, nohp, user['id']))
+      cursor.execute(q1, (username, filename, nohp, jk, user['id']))
       conn.commit()
 
     return JSONResponse(content={"Pesan": "Sukses Update"}, status_code=200)
