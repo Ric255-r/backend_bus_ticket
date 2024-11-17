@@ -407,6 +407,97 @@ async def deleteBis(
     cursor.close()
 #End Bagian insertBis
 
+# Start Stok Tiket
+@app.get('/stoktiket')
+async def getStokTiket(
+  id_bis: Optional[str] = Query(None)
+):
+  try:
+    if id_bis is None:
+      cursor = conn.cursor()
+      q1 = """
+        SELECT s.*, b.nama_bis FROM stok_tiket s
+        INNER JOIN bis b ON s.id_bis = b.id_bis
+      """
+      cursor.execute(q1)
+    else:
+      cursor = conn.cursor()
+      q1 = """
+        SELECT s.*, b.nama_bis FROM stok_tiket s
+        INNER JOIN bis b ON s.id_bis = b.id_bis
+        WHERE s.id_bis = %s
+      """
+      cursor.execute(q1, (id_bis, ))
+
+    items = cursor.fetchall()
+
+    column_name = []
+    for kol in cursor.description:
+      column_name.append(kol[0])
+
+    df = pd.DataFrame(items, columns=column_name)
+    return df.to_dict('records')
+
+  except HTTPException as e:
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  
+  finally:
+    cursor.close()
+
+@app.post('/stoktiket')
+async def insertStokTiket(
+  request: Request,
+  user: JwtAuthorizationCredentials = Security(access_security)
+):
+  try:
+    cursor = conn.cursor()
+
+    data = await request.json()
+
+    id = data['id_bis']
+    dt1 = data['total_tiket']
+    dt2 = data['tiket_tersedia']
+
+    q1 = """
+      INSERT INTO stok_tiket VALUES(%s, %s, %s)
+    """
+    cursor.execute(q1, (id, dt1, dt2))
+    conn.commit()
+
+    return JSONResponse(content={"Success": "Dat Tersimpan"}, status_code=200)
+  except HTTPException as e:
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  finally:
+    cursor.close()
+
+@app.put('/stoktiket/{id}')
+async def updateStokTiket(
+  id:str,
+  request: Request,
+  user: JwtAuthorizationCredentials = Security(access_security)
+):
+  try:
+    cursor = conn.cursor()
+
+    data = await request.json()
+
+    dt1 = data['total_tiket']
+    dt2 = data['tiket_tersedia']
+
+    q1 = """
+      UPDATE stok_tiket SET total_tiket = %s, tiket_tersedia = %s
+      WHERE id_bis = %s
+    """
+    cursor.execute(q1, (dt1, dt2, id))
+    conn.commit()
+
+    return JSONResponse(content={"Success": "Dat Tersimpan"}, status_code=200)
+  except HTTPException as e:
+    return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+  finally:
+    cursor.close()
+# End Bagian Stok Tiket
+
 
 #Start Bagian Kelas Bis
 @app.get('/kelasbis')
