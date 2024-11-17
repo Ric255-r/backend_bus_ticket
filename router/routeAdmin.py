@@ -1,4 +1,6 @@
 import json
+
+from openpyxl import Workbook
 from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -16,6 +18,9 @@ from datetime import datetime
 from typing import List, Optional, Union
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils.dataframe import dataframe_to_rows
+from utils.fnConvertStr import serialize_data
 
 app = APIRouter()
 
@@ -539,6 +544,47 @@ async def getAllTrans(
         """
         cursor.execute(q1)
 
+      column_name = []
+      for kol in cursor.description:
+        column_name.append(kol[0])
+      
+      items = cursor.fetchall()
+
+      df = pd.DataFrame(items, columns=column_name)
+
+      data = df.to_dict('records')
+      return data
+
+    except HTTPException as e:
+      return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
+    
+    finally:
+      cursor.close()
+  else:
+    return JSONResponse(content={"Error": "Unauhorized"}, status_code=401)
+
+
+@app.get('/filterDataTrans/{mode}')
+async def getFilterTrans(
+  mode: str,
+  user: JwtAuthorizationCredentials = Security(access_security)
+):
+  if user['roles'] == "ADMIN":
+    try:
+      cursor = conn.cursor()
+
+      q1 = f"""
+          SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
+          INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+          INNER JOIN bis b ON dt.id_bis = b.id_bis
+          LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
+          {"WHERE t.status_trans = 'COMPLETED'" if mode == 'COMPLETED' else ''}
+          {"WHERE t.status_trans = 'PENDING'" if mode == 'PENDING' else ''}
+          {"WHERE t.status_trans = 'CANCELLED'" if mode == 'CANCELLED' else ''}
+          {"ORDER BY t.tgl_trans DESC" if mode == 'TBARU' else ''}
+          {"ORDER BY t.tgl_trans ASC" if mode == 'TLAMA' else ''}
+      """
+      cursor.execute(q1)
 
       column_name = []
       for kol in cursor.description:
@@ -564,7 +610,7 @@ async def getAllTrans(
 async def updateTrans(
   id: str,
   request: Request,
-  user: JwtAuthorizationCredentials = Security(access_security)
+  # user: JwtAuthorizationCredentials = Security(access_security)
 ) :
   try:
     cursor = conn.cursor()
@@ -765,31 +811,71 @@ async def updatePaket(
     jambalik = form_data.get('jambalik')
     jlhpenumpang = form_data.get('jlhpenumpang')
     gbrpaket: Optional[UploadFile] = form_data.get('gbrpaket')
+    benefit = form_data.get('benefit')
+    idBenefit = form_data.get('id_benefit')
 
-    filename = f"{uuid.uuid4()}.jpg"
-    file_location = os.path.join("images/gbrpaket", filename)
+    # Logic Benefit
+    splitBenefit = benefit.split(",") # Ini Belum dalam bentuk list
+    lstBenefit = list(splitBenefit)
+    try:
+      # Ini ga bisa pake query update. karena dia bkl kereplace semua
+      # Step 1. Delete Dlu Data dengan ID yang mau di input
+      delQuery = "DELETE FROM benefitwisata WHERE id_benefit = %s"
+      cursor.execute(delQuery, (idBenefit, ))
 
-    #read & save file
-    content = await gbrpaket.read()
-    with open(file_location, "wb") as f:
-      f.write(content)
+      # Step 2. Input Benefit Baru
+      insertQuery = "INSERT INTO benefitwisata (benefit, id_benefit) VALUES (%s, %s)"
+      for i in lstBenefit:
+        cursor.execute(insertQuery, (i.strip(), idBenefit))  # Use the current benefit
+      conn.commit()  # Commit semua Insert
 
-    q1 = "SELECT * FROM rute WHERE id = %s"
-    cursor.execute(q1, (id_rute, ))
-    items = cursor.fetchone()
-    print(items)
+    except Exception as e:
+      print(e)
+      conn.rollback()
+    # End Logic benefit
 
-    q2 = """
-      UPDATE paketwisata SET nama_paket = %s, harga_paket = %s, id_bis = %s, rute_awal = %s,
-      rute_akhir = %s, tgl_brkt = %s, tgl_balik = %s, gbrpaket = %s, subjudulpaket = %s,
-      jambrkt = %s, jambalik = %s, jlhpenumpang = %s
-      WHERE id_paket = %s
-    """
-    cursor.execute(q2, 
-      (nama_paket, harga_paket, id_bis, items[1], items[2], 
-       tgl_brkt, tgl_balik, filename, subjudul_paket, jambrkt, jambalik, jlhpenumpang, id_paket)
-    )
-    conn.commit()
+    if gbrpaket is not None:
+      filename = f"{uuid.uuid4()}.jpg"
+      file_location = os.path.join("images/gbrpaket", filename)
+
+      #read & save file
+      content = await gbrpaket.read()
+      with open(file_location, "wb") as f:
+        f.write(content)
+
+      q1 = "SELECT * FROM rute WHERE id = %s"
+      cursor.execute(q1, (id_rute, ))
+      items = cursor.fetchone()
+
+      q2 = """
+        UPDATE paketwisata SET nama_paket = %s, harga_paket = %s, id_bis = %s, rute_awal = %s,
+        rute_akhir = %s, tgl_brkt = %s, tgl_balik = %s, gbrpaket = %s, subjudulpaket = %s,
+        jambrkt = %s, jambalik = %s, jlhpenumpang = %s, id_benefit = %s
+        WHERE id_paket = %s
+      """
+      cursor.execute(q2, 
+        (nama_paket, harga_paket, id_bis, items[1], items[2], 
+        tgl_brkt, tgl_balik, filename, subjudul_paket, jambrkt, jambalik, jlhpenumpang, idBenefit, id_paket)
+      )
+      conn.commit()
+    else:
+      # Jika g ad gbr
+      q1 = "SELECT * FROM rute WHERE id = %s"
+      cursor.execute(q1, (id_rute, ))
+      items = cursor.fetchone()
+
+      q2 = """
+        UPDATE paketwisata SET nama_paket = %s, harga_paket = %s, id_bis = %s, rute_awal = %s,
+        rute_akhir = %s, tgl_brkt = %s, tgl_balik = %s, subjudulpaket = %s,
+        jambrkt = %s, jambalik = %s, jlhpenumpang = %s, id_benefit = %s
+        WHERE id_paket = %s
+      """
+      cursor.execute(q2, 
+        (nama_paket, harga_paket, id_bis, items[1], items[2], 
+        tgl_brkt, tgl_balik, subjudul_paket, jambrkt, jambalik, jlhpenumpang, idBenefit, id_paket)
+      )
+      conn.commit()
+
 
   except HTTPException as e:
     return JSONResponse(content={"Error": str(e)}, status_code=e.status_code)
@@ -817,6 +903,87 @@ async def delpaket(
   finally:
     cursor.close()
 
-  
-  
+@app.get('/export_trans')
+async def exportExcel(
+  tglawal: str = Query(...),
+  tglakhir: str = Query(...)
+):
+  try:
+    # step 1 fetch query spt biasa
+    cursor = conn.cursor()
+    query = """
+      SELECT t.id_trans, t.tgl_trans, t.email_cust, t.id_staff, t.status_trans, t.total_harga, t.metode_byr,
+      dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
+      INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+      INNER JOIN bis b ON dt.id_bis = b.id_bis
+      LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
+      WHERE t.tgl_trans BETWEEN %s AND %s
+      AND (t.status_trans = 'CANCELLED' OR t.status_trans = 'COMPLETED') 
+    """
+    cursor.execute(query, (tglawal, tglakhir))
+    items = serialize_data(cursor.fetchall())
 
+    column_name = []
+
+    for kol in cursor.description:
+      column_name.append(kol[0])
+
+    df = pd.DataFrame(items, columns=column_name)
+
+    # Step 2. Buat Workbook Excel lalu tambahkan worksheet
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "LAP. PENJUALAN"
+
+    # Step 3. Tambahkan Header kaya judul lalu di merge cell
+    corporate_name = "BUS_HUB"
+    worksheet.merge_cells('A1:K1') #merge a1 sampe n1
+    corp_cell = worksheet['A1']
+    corp_cell.value = corporate_name
+
+    # Step 4. Center text corporate cell
+    corp_cell.alignment = Alignment(horizontal='center', vertical='center')
+    header_font = Font(bold=True, size=18)
+    for cell in worksheet[1]: # index row excel start dr 1. ini ceritany mw tebalin bushub
+      cell.font = header_font
+
+    # Step 5. Tambah Keterangan dibawah nama Korporat yg header di A1
+    corporate_ket = "LAPORAN PENJUALAN"
+    worksheet.merge_cells('A2:K2') 
+    ket_cell = worksheet['A2']
+    ket_cell.value = corporate_ket
+
+    # Step 6. Center corporate addr
+    ket_cell.alignment = Alignment(horizontal='center', vertical='center')
+    header2_font = Font(bold=True, size=15)
+    for cell in worksheet[2]: #Tebalin row kedua
+      cell.font = header2_font
+    
+    worksheet.append([]) #buat space kosong di rowsnya
+
+    # Step 7. Tambahkan Header dari nama column_name
+    worksheet.append(column_name)
+    header3_font = Font(bold=True, size=11)
+    for cell in worksheet[4]: #index ke 4. yg nama column
+      cell.font = header3_font
+
+    # Step 8. Tambahin data dataframe ke dalam worksheet
+    for row in dataframe_to_rows(df, index=False, header=False):
+      worksheet.append(row)
+      
+    # Step 9. Simpan Workbook ke file
+    file_path = "datapenjualan_bushub.xlsx"
+    workbook.save(file_path)
+
+    # Step 10. Return Excelnya sbg FileResponse
+    return FileResponse(
+      file_path,
+      media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      filename="datapenjualan_bushub.xlsx"
+    )
+    
+  except Exception as e:
+    print(e)
+
+  finally:
+    cursor.close()

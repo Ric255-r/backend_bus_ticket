@@ -1,0 +1,66 @@
+import pandas as pd
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+import sqlite3  # or your preferred database connector
+from openpyxl import Workbook
+from openpyxl.styles import Alignment
+from openpyxl.utils.dataframe import dataframe_to_rows
+
+app = FastAPI()
+
+# Sample database connection (replace with your actual database)
+def get_db_connection():
+    conn = sqlite3.connect('your_database.db')
+    return conn
+
+@app.get("/export/excel")
+async def export_to_excel():
+    # Step 1: Query your database
+    conn = get_db_connection()
+    query = "SELECT id, name, position, salary FROM employees"  # Replace with your actual query
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+
+    # Step 2: Create a new Excel workbook and add a worksheet
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Employees"
+
+    # Step 3: Add the corporate name header and merge cells
+    corporate_name = "Your Corporate Name"
+    worksheet.merge_cells('A1:D1')  # Merging cells A1 to D1
+    merged_cell = worksheet['A1']
+    merged_cell.value = corporate_name
+
+    # Step 4: Center the text in the merged cell
+    merged_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Step 5: Add the corporate address below the corporate name and merge cells
+    corporate_address = "123 Corporate Ave, Business City, BC 12345"
+    worksheet.merge_cells('A2:D2')  # Merging cells A2 to D2
+    address_cell = worksheet['A2']
+    address_cell.value = corporate_address  # Set address in the merged cell
+
+    # Step 6: Center the address in the merged cell
+    address_cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Step 7: Add custom headers
+    headers = ['Employee ID', 'Full Name', 'Job Title', 'Annual Salary']
+    worksheet.append(headers)  # Add headers in the third row
+
+    # Step 8: Add DataFrame data to the worksheet
+    for row in dataframe_to_rows(df, index=False, header=False):
+        worksheet.append(row)
+
+    # Step 9: Create a BytesIO buffer to save the workbook
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)  # Move to the beginning of the BytesIO buffer
+
+    # Step 10: Return the Excel file as a StreamingResponse
+    return StreamingResponse(
+        buffer,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": "attachment; filename=employees.xlsx"}
+    )

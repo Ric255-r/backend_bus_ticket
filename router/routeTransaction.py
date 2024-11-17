@@ -15,6 +15,7 @@ import os
 import uuid
 from datetime import datetime
 from typing import Optional, Union
+from utils.fnConvertStr import serialize_data
 
 app = APIRouter()
 
@@ -31,8 +32,13 @@ def fnGbrPaket(filename: str):
   return FileResponse(img_path, media_type='image/png')
 
 @app.get('/fotoLogoBis/{filename}')
-def fnGbrPaket(filename: str):
+def fnLogoBis(filename: str):
   img_path = os.path.join("images/logoBis", filename)
+  return FileResponse(img_path, media_type='image/png')
+
+@app.get('/fotoGbrBis/{filename}')
+def fnGbrBis(filename: str):
+  img_path = os.path.join("images/gbrbis", filename)
   return FileResponse(img_path, media_type='image/png')
 
 def getLastTrans():
@@ -149,22 +155,7 @@ async def listBisParameter(nama_bis: Optional[str] = None):
   finally:
     cursor.close()
 
-def serialize_data(data):
-  converted_data = []
-  for item in data:
-    converted_item = []
-    
-    for value in item:
-      if value is not None:
-        converted_item.append(str(value))
-      else:
-        converted_item.append('')
 
-    # # Convert each element in the tuple to string versi shorthand
-    # converted_item = [str(value) if value is not None else '' for value in item]
-
-    converted_data.append(tuple(converted_item))  # Append as a tuple
-  return converted_data
 
 # Note Kalo Error
 # ValueError: Out of range float values are not JSON compliant
@@ -265,7 +256,8 @@ async def getTransaksi(
   try:
     if status is not None:
       query = """
-        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket, pw.gbrpaket FROM transaksi t 
+        SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute,
+        b.jasa_travel, pw.nama_paket, pw.gbrpaket FROM transaksi t 
         INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
         INNER JOIN bis b ON dt.id_bis = b.id_bis
         LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
@@ -274,7 +266,14 @@ async def getTransaksi(
 
       cursor.execute(query, (user['email'], status.upper()))
     else:
-      query = "SELECT * FROM transaksi WHERE email_cust = %s ORDER BY tgl_trans DESC"
+      query = """
+        SELECT t.*, pw.nama_paket, b.jasa_travel FROM transaksi t
+        LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
+        INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+        INNER JOIN bis b ON dt.id_bis = b.id_bis
+        WHERE t.email_cust = %s ORDER BY t.tgl_trans DESC
+
+      """
       cursor.execute(query, (user['email'], ))
 
     column_name = []
