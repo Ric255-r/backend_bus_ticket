@@ -375,7 +375,7 @@ async def bayar(
 
     # Check if bukti bayar kosong. ini byr cash
     if not buktiByr:
-      # Update Stok Tiket 
+      # Update Stok Tiket. masih blm slesai. validasi kalo tiket_tersedia >= jlh_penumpang
       # if available_tickets >= number_of_tickets:
 
       qTiket = """
