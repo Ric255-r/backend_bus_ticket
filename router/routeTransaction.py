@@ -362,8 +362,27 @@ async def bayar(
     if not os.path.exists(IMAGEDIR):
         os.makedirs(IMAGEDIR)
 
+    qCekTiket = """
+      SELECT tiket_tersedia FROM stok_tiket WHERE id_bis = %s
+    """
+    cursor.execute(qCekTiket, (id_bis, ))
+    result = cursor.fetchone()
+
+    if result is None:
+      raise HTTPException(status_code=404, detail="Bus not found")
+  
+    tiket_tersedia = result[0]
+
     # Check if bukti bayar kosong. ini byr cash
     if not buktiByr:
+      # Update Stok Tiket 
+      # if available_tickets >= number_of_tickets:
+
+      qTiket = """
+        UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
+      """
+      cursor.execute(qTiket, (jlh_penumpang, id_bis))
+      conn.commit()
 
       if id_paket is None:
         # query 
@@ -405,6 +424,15 @@ async def bayar(
         #return {"message": "Transaksi Cash Oke"}
 
     else:
+      # Update Stok Tiket 
+      # if available_tickets >= number_of_tickets:
+
+      qTiket = """
+        UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
+      """
+      cursor.execute(qTiket, (jlh_penumpang, id_bis))
+      conn.commit()
+
       # Kondisi kalo checkout tanpa paket.
       if id_paket is None:
         # kondisi kalo bukti bayar ga kosong

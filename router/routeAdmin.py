@@ -610,28 +610,28 @@ async def getAllTrans(
   id: Optional[str] = Query(None), # Untuk ambil queryString
   user: JwtAuthorizationCredentials = Security(access_security)
 ):
-  if user['roles'] == "ADMIN":
+  if user['roles'] == "ADMIN" or user['roles'] == "KASIR":
     try:
       cursor = conn.cursor()
 
       if id is not None:
         q1 = """
-            SELECT t.*, u.*, dt.id_bis, dt.tgl_pergi, dt.jlh_penumpang, dt.tgl_balik, 
-            b.id_rute, b.nama_bis, b.id_kelas_bis, pw.nama_paket, r.kota_awal, r.kota_akhir FROM transaksi t 
-            INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
-            INNER JOIN bis b ON dt.id_bis = b.id_bis
-            INNER JOIN users u ON t.email_cust = u.email
-            LEFT JOIN rute r ON b.id_rute = r.id
-            LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
-            WHERE t.id_trans = %s
+          SELECT t.*, u.*, dt.id_bis, dt.tgl_pergi, dt.jlh_penumpang, dt.tgl_balik, 
+          b.id_rute, b.nama_bis, b.id_kelas_bis, pw.nama_paket, r.kota_awal, r.kota_akhir FROM transaksi t 
+          INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+          INNER JOIN bis b ON dt.id_bis = b.id_bis
+          INNER JOIN users u ON t.email_cust = u.email
+          LEFT JOIN rute r ON b.id_rute = r.id
+          LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
+          WHERE t.id_trans = %s
         """
         cursor.execute(q1, (id, )) #kalo tuple sifatnya gini. klo data single kasih 1 koma ksg
       else:
         q1 = """
-            SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
-            INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
-            INNER JOIN bis b ON dt.id_bis = b.id_bis
-            LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
+          SELECT t.*, dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
+          INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
+          INNER JOIN bis b ON dt.id_bis = b.id_bis
+          LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
         """
         cursor.execute(q1)
 
@@ -660,7 +660,7 @@ async def getFilterTrans(
   mode: str,
   user: JwtAuthorizationCredentials = Security(access_security)
 ):
-  if user['roles'] == "ADMIN":
+  if user['roles'] == "ADMIN" or user['roles'] == "KASIR":
     try:
       cursor = conn.cursor()
 
@@ -711,6 +711,16 @@ async def updateTrans(
     if data['status_trans'] == "CANCELLED":
       q1 = "UPDATE transaksi SET status_trans = %s, alasan_tolak = %s WHERE id_trans = %s"
       cursor.execute(q1, (data['status_trans'], data['alasan_tolak'], id))
+
+      qSelect = """
+        SELECT jlh_penumpang, id_bis FROM "detailTransaksi" WHERE id_trans = %s
+      """
+      cursor.execute(qSelect, (id, ))
+      result = cursor.fetchone()
+
+      q2 = "UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia + %s WHERE id_bis = %s"
+      cursor.execute(q2, (result[0], result[1]))
+
     else:
       q1 = "UPDATE transaksi SET status_trans = %s WHERE id_trans = %s"
       cursor.execute(q1, (data['status_trans'], id))
