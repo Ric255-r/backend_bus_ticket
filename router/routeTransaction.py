@@ -377,7 +377,6 @@ async def bayar(
     if not buktiByr:
       # Update Stok Tiket. masih blm slesai. validasi kalo tiket_tersedia >= jlh_penumpang
       # if available_tickets >= number_of_tickets:
-
       qTiket = """
         UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
       """
@@ -385,112 +384,71 @@ async def bayar(
       conn.commit()
 
       if id_paket is None:
-        # query 
+        # query insert ke tbltransaksi kalo pesan tanpa paket
         q1 = """
           INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
           values(%s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'cash') )
+        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], '-', 'PENDING', total_harga, 'cash') )
         conn.commit()
         
-        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-        q2 = """
-          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-          VALUES(%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
-        conn.commit()
-
-        #return {"message": "Transaksi Cash Oke"}
-      # raise HTTPException(status_code=400, detail="No file provided")
       else:
-        
-        # Jika Psn Lwt Paket
+        # query insert ke tbltransaksi kalo pesan dgn paket
         q1 = """
           INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, id_paket) 
           values(%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'cash', id_paket) )
+        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], '-', 'PENDING', total_harga, 'cash', id_paket) )
         conn.commit()
         
-        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-        q2 = """
-          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-          VALUES(%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
-        conn.commit()
+    else: #kondisi jika bayar dgn transfer pake buktiByr
 
-        #return {"message": "Transaksi Cash Oke"}
-
-    else:
       # Update Stok Tiket 
       # if available_tickets >= number_of_tickets:
-
       qTiket = """
         UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
       """
       cursor.execute(qTiket, (jlh_penumpang, id_bis))
       conn.commit()
 
-      # Kondisi kalo checkout tanpa paket.
-      if id_paket is None:
-        # kondisi kalo bukti bayar ga kosong
-        # Create a unique filename
-        filename = f"{uuid.uuid4()}.jpg"
-        file_location = os.path.join(IMAGEDIR, filename)
+      # Create a unique filename
+      filename = f"{uuid.uuid4()}.jpg"
+      file_location = os.path.join(IMAGEDIR, filename)
 
-        # Read and save the file
-        content = await buktiByr.read()
-        with open(file_location, "wb") as f:
-            f.write(content)
-        
-        # query 
+      # Read and save the file
+      content = await buktiByr.read()
+      with open(file_location, "wb") as f:
+          f.write(content)
+
+      # Kondisi kalo checkout tanpa paket.
+      if id_paket is None:        
+        # query insert ke tbltransaksi kalo pesan tanpa paket
         q1 = """
           INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
           values(%s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'transfer') )
-        conn.commit()
-        
-        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-        q2 = """
-          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-          VALUES(%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], '-', 'PENDING', total_harga, 'transfer') )
         conn.commit()
 
         #return {"message": "File uploaded successfully", "filename": filename}
       else:
-        # kondisi kalo bukti bayar ga kosong
-        # Create a unique filename
-        filename = f"{uuid.uuid4()}.jpg"
-        file_location = os.path.join(IMAGEDIR, filename)
-
-        # Read and save the file
-        content = await buktiByr.read()
-        with open(file_location, "wb") as f:
-            f.write(content)
-        
-        # query 
+        # query insert ke tbltransaksi kalo pesan dgn paket
         q1 = """
           INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, id_paket) 
           values(%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], 'ST001', 'PENDING', total_harga, 'transfer', id_paket) )
-        conn.commit()
-        
-        #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-        q2 = """
-          INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-          VALUES(%s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], '-', 'PENDING', total_harga, 'transfer', id_paket) )
         conn.commit()
 
-        #return {"message": "File uploaded successfully", "filename": filename}
 
+    #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
+    # Ini diluar ifelse buktiByr, biar ga duplikat. krn fungsinya sama.
+    q2 = """
+      INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
+      VALUES(%s, %s, %s, %s, %s, %s)
+    """
+    cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+    conn.commit()
 
     return JSONResponse(content={"Pesan": "Transaksi Sukses"}, status_code=200)
   except Exception as e:
@@ -499,3 +457,4 @@ async def bayar(
   
   finally: 
     cursor.close()
+

@@ -142,6 +142,7 @@ async def updateProfile(
   username: str = Form(...),
   email: str = Form(...),
   nohp: str = Form(...),
+  tanggal_lahir: str = Form(...),
   jk: bool = Form(...),
   user : JwtAuthorizationCredentials = Security(access_security),
 
@@ -160,11 +161,11 @@ async def updateProfile(
 
     if fotoProfile is None:
       q1 = """
-        UPDATE users SET username = %s, no_hp = %s, jk = %s
+        UPDATE users SET username = %s, no_hp = %s, jk = %s, tanggal_lahir = %s
         WHERE id = %s
       """
 
-      cursor.execute(q1, (username, nohp, jk, user['id']))
+      cursor.execute(q1, (username, nohp, jk, tanggal_lahir, user['id']))
       conn.commit()
     else:
       filename = f"{uuid.uuid4()}.png"
@@ -176,11 +177,11 @@ async def updateProfile(
         f.write(content)
 
       q1 = """
-        UPDATE users SET username = %s, profile_picture = %s, no_hp = %s, jk = %s
+        UPDATE users SET username = %s, profile_picture = %s, no_hp = %s, jk = %s, tanggal_lahir = %s
         WHERE id = %s
       """
 
-      cursor.execute(q1, (username, filename, nohp, jk, user['id']))
+      cursor.execute(q1, (username, filename, nohp, jk, tanggal_lahir, user['id']))
       conn.commit()
 
     return JSONResponse(content={"Pesan": "Sukses Update"}, status_code=200)

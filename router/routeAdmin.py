@@ -616,7 +616,7 @@ async def getAllTrans(
 
       if id is not None:
         q1 = """
-          SELECT t.*, u.*, dt.id_bis, dt.tgl_pergi, dt.jlh_penumpang, dt.tgl_balik, 
+          SELECT t.*, u.email, u.username, dt.id_bis, dt.tgl_pergi, dt.jlh_penumpang, dt.tgl_balik, 
           b.id_rute, b.nama_bis, b.id_kelas_bis, pw.nama_paket, r.kota_awal, r.kota_akhir FROM transaksi t 
           INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
           INNER JOIN bis b ON dt.id_bis = b.id_bis
@@ -709,9 +709,10 @@ async def updateTrans(
     # print(data)
 
     if data['status_trans'] == "CANCELLED":
-      q1 = "UPDATE transaksi SET status_trans = %s, alasan_tolak = %s WHERE id_trans = %s"
-      cursor.execute(q1, (data['status_trans'], data['alasan_tolak'], id))
+      q1 = "UPDATE transaksi SET status_trans = %s, id_staff = %s, alasan_tolak = %s WHERE id_trans = %s"
+      cursor.execute(q1, (data['status_trans'], data['id_staff'], data['alasan_tolak'], id))
 
+      # Balikin Lagi Stoknya
       qSelect = """
         SELECT jlh_penumpang, id_bis FROM "detailTransaksi" WHERE id_trans = %s
       """
@@ -720,10 +721,10 @@ async def updateTrans(
 
       q2 = "UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia + %s WHERE id_bis = %s"
       cursor.execute(q2, (result[0], result[1]))
-
     else:
-      q1 = "UPDATE transaksi SET status_trans = %s WHERE id_trans = %s"
-      cursor.execute(q1, (data['status_trans'], id))
+
+      q1 = "UPDATE transaksi SET status_trans = %s, id_staff = %s, generated_ticket = %s WHERE id_trans = %s"
+      cursor.execute(q1, (data['status_trans'], data['id_staff'], data['generated_ticket'], id))
 
     conn.commit()
 
