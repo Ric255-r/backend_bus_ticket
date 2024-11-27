@@ -355,9 +355,15 @@ async def bayar(
 ):
   # Note kalo error not all arguments converted during string formatting.
   # itu bs jadi kurang kolom, kurang value, atau kurang %s di query sql
+
+  #print(id_paket) #idpaket dibaca empty value. bug disini.
   id_trans = getLastTrans()
+  cursor = conn.cursor()
+
   try:
-    cursor = conn.cursor()
+    # start transaction
+    cursor.execute("START TRANSACTION")
+
     # Ensure directory exists
     if not os.path.exists(IMAGEDIR):
         os.makedirs(IMAGEDIR)
@@ -373,44 +379,12 @@ async def bayar(
   
     tiket_tersedia = result[0]
 
-    # Check if bukti bayar kosong. ini byr cash
-    if not buktiByr:
-      # Update Stok Tiket. masih blm slesai. validasi kalo tiket_tersedia >= jlh_penumpang
-      # if available_tickets >= number_of_tickets:
-      qTiket = """
-        UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
-      """
-      cursor.execute(qTiket, (jlh_penumpang, id_bis))
-      conn.commit()
+    # Default klo bayar pake cash
+    filename = "nofoto"
+    metodeByr = "cash"
 
-      if id_paket is None:
-        # query insert ke tbltransaksi kalo pesan tanpa paket
-        q1 = """
-          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
-          values(%s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], '-', 'PENDING', total_harga, 'cash') )
-        conn.commit()
-        
-      else:
-        # query insert ke tbltransaksi kalo pesan dgn paket
-        q1 = """
-          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, id_paket) 
-          values(%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(q1, (id_trans, 'nofoto', datetime.now(), user['email'], '-', 'PENDING', total_harga, 'cash', id_paket) )
-        conn.commit()
-        
-    else: #kondisi jika bayar dgn transfer pake buktiByr
-
-      # Update Stok Tiket 
-      # if available_tickets >= number_of_tickets:
-      qTiket = """
-        UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
-      """
-      cursor.execute(qTiket, (jlh_penumpang, id_bis))
-      conn.commit()
-
+    # if ini buat bayar pake transfer
+    if buktiByr:
       # Create a unique filename
       filename = f"{uuid.uuid4()}.jpg"
       file_location = os.path.join(IMAGEDIR, filename)
@@ -419,39 +393,57 @@ async def bayar(
       content = await buktiByr.read()
       with open(file_location, "wb") as f:
           f.write(content)
+      
+      metodeByr = "transfer"
 
-      # Kondisi kalo checkout tanpa paket.
-      if id_paket is None:        
+    # Update Stok Tiket.  validasi kalo tiket_tersedia >= jlh_penumpang
+    # if available_tickets >= number_of_tickets:
+    if tiket_tersedia >= jlh_penumpang:
+
+      qTiket = """
+        UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia - %s WHERE id_bis = %s
+      """
+      cursor.execute(qTiket, (jlh_penumpang, id_bis))
+
+      # idpaket ini masih bug. "" ga kebaca sebagai null di flutter.
+      # makanya blok 1 ini ga ke ekseskusi, selalu blok ke 2. dari cara kerja si g mslh
+      # tp ya ga standar.
+      if id_paket is None:
         # query insert ke tbltransaksi kalo pesan tanpa paket
+        print("Ekseskusi Blok 1")
         q1 = """
-          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr) 
-          values(%s, %s, %s, %s, %s, %s, %s, %s)
+          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, user_bayar, kembalian) 
+          values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], '-', 'PENDING', total_harga, 'transfer') )
-        conn.commit()
-
-        #return {"message": "File uploaded successfully", "filename": filename}
+        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], '-', 'PENDING', total_harga, metodeByr, 0, 0) )
+        
       else:
         # query insert ke tbltransaksi kalo pesan dgn paket
+        print("Ekseskusi Blok 2")
+
         q1 = """
-          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, id_paket) 
-          values(%s, %s, %s, %s, %s, %s, %s, %s, %s)
+          INSERT INTO transaksi(id_trans, bukti_foto, tgl_trans, email_cust, id_staff, status_trans, total_harga, metode_byr, user_bayar, kembalian, id_paket) 
+          values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], '-', 'PENDING', total_harga, 'transfer', id_paket) )
-        conn.commit()
+        cursor.execute(q1, (id_trans, filename, datetime.now(), user['email'], '-', 'PENDING', total_harga, metodeByr, 0, 0, id_paket) )
 
+      #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
+      # Ini diluar ifelse id_paket, biar ga duplikat. krn fungsinya sama.
+      q2 = """
+        INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
+        VALUES(%s, %s, %s, %s, %s, %s)
+      """
+      cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
+      
+      # Commit semua transaksi.
+      conn.commit()
+      return JSONResponse(content={"Pesan": "Transaksi Sukses"}, status_code=200)
+    else:
+      # 503 = service unavailable
+      return JSONResponse(content={"Pesan": "Tiket Habis"}, status_code=503)
 
-    #q2 untuk detailTrans. mesti pake triplequotes soalny nama tabel ak camelcase.
-    # Ini diluar ifelse buktiByr, biar ga duplikat. krn fungsinya sama.
-    q2 = """
-      INSERT INTO "detailTransaksi"(id_trans, id_bis, tgl_pergi, tgl_balik, jlh_penumpang, hrg_tiket_perorg)
-      VALUES(%s, %s, %s, %s, %s, %s)
-    """
-    cursor.execute(q2, (id_trans, id_bis, tgl_pergi, tgl_pergi if tgl_balik == "" else tgl_balik, jlh_penumpang, hrg_tiket_perorg))
-    conn.commit()
-
-    return JSONResponse(content={"Pesan": "Transaksi Sukses"}, status_code=200)
   except Exception as e:
+    cursor.execute("ROLLBACK")
     print(str(e))
     raise HTTPException(status_code=500, detail=str(e))
   

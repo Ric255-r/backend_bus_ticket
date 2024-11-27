@@ -703,8 +703,9 @@ async def updateTrans(
   request: Request,
   # user: JwtAuthorizationCredentials = Security(access_security)
 ) :
+  cursor = conn.cursor()
   try:
-    cursor = conn.cursor()
+    cursor.execute("START TRANSACTION")
     data = await request.json()
     # print(data)
 
@@ -722,15 +723,24 @@ async def updateTrans(
       q2 = "UPDATE stok_tiket SET tiket_tersedia = tiket_tersedia + %s WHERE id_bis = %s"
       cursor.execute(q2, (result[0], result[1]))
     else:
+      if data['metode_byr'] == "transfer":
+        # Select total_harga untuk user yg bayar make transfer. samain total harga dgn user bayar
+        qSelect = "SELECT total_harga FROM transaksi WHERE id_trans = %s"
+        cursor.execute(qSelect, (id, ))
+        result = cursor.fetchone()
 
-      q1 = "UPDATE transaksi SET status_trans = %s, id_staff = %s, generated_ticket = %s WHERE id_trans = %s"
-      cursor.execute(q1, (data['status_trans'], data['id_staff'], data['generated_ticket'], id))
+        q1 = "UPDATE transaksi SET status_trans = %s, id_staff = %s, generated_ticket = %s, user_bayar = %s, kembalian = %s WHERE id_trans = %s"
+        cursor.execute(q1, (data['status_trans'], data['id_staff'], data['generated_ticket'], result[0], 0, id))
+      else:
+        q1 = "UPDATE transaksi SET status_trans = %s, id_staff = %s, generated_ticket = %s, user_bayar = %s, kembalian = %s WHERE id_trans = %s"
+        cursor.execute(q1, (data['status_trans'], data['id_staff'], data['generated_ticket'], data['user_bayar'], data['kembalian'], id))
 
     conn.commit()
 
     return JSONResponse(content=data, status_code=200)
 
   except HTTPException as e:
+    cursor.execute("ROLLBACK")
     return JSONResponse(content={"ErrorWoi": str(e)}, status_code=e.status_code)
   finally:
     cursor.close()
@@ -741,17 +751,25 @@ async def updateTrans(
   id: str,
   user: JwtAuthorizationCredentials = Security(access_security)
 ) :
+  cursor = conn.cursor()
+
   try:
-    cursor = conn.cursor()
+    cursor.execute("START TRANSACTION")
     # print(data)
 
     q1 = "DELETE FROM transaksi WHERE id_trans = %s"
     cursor.execute(q1, (id, ))
-    conn.commit()
 
+    q2 = """
+      DELETE FROM "detailTransaksi" WHERE id_trans = %s
+    """
+    cursor.execute(q2, (id, ))
+
+    conn.commit()
     return JSONResponse(content={"Success": "Lala"}, status_code=200)
 
   except HTTPException as e:
+    cursor.execute("ROLLBACK")
     return JSONResponse(content={"ErrorWoi": str(e)}, status_code=e.status_code)
   finally:
     cursor.close()
