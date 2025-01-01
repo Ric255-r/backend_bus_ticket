@@ -8,7 +8,7 @@ from fastapi_jwt import (
 
 import os
 var = os.getenv('python_backend_bushub') # mw di restart dlu laptop kalo baru declare env di windows
-print(var)
+# print(var)
 
 #Cek AccessToken dari header
 access_security = JwtAccessBearerCookie(

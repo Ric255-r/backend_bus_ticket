@@ -30,7 +30,7 @@ app.include_router(main_router, prefix="/api")
 # bawaan default
 if __name__ == "__main__":
   import uvicorn
-  uvicorn.run(app, host="192.168.100.59", port=5500)
+  uvicorn.run(app, host="192.168.1.7", port=5500)
 
 
 #note for self.

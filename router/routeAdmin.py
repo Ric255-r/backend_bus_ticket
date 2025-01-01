@@ -21,6 +21,7 @@ from dateutil.relativedelta import relativedelta
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils.dataframe import dataframe_to_rows
 from utils.fnConvertStr import serialize_data
+from utils.fnWebScrapping import scraper
 
 app = APIRouter()
 
@@ -31,6 +32,13 @@ def getDateOneMonthAgo():
   one_month_ago = now - relativedelta(months=1)
 
   return str(one_month_ago)
+
+# @app.get('/data-scraping')
+# def scrappedData():
+#   data = scraper("https://www.traveloka.com/id-id/explore/activities/wisata-pontianak-yang-lagi-hits-ta/321888")
+
+#   return data
+
 
 #Bagian Dashboard
 @app.get('/dashboard')
@@ -1032,8 +1040,9 @@ async def exportExcel(
     # step 1 fetch query spt biasa
     cursor = conn.cursor()
     query = """
-      SELECT t.id_trans, t.tgl_trans, t.email_cust, t.id_staff, t.status_trans, t.total_harga, t.metode_byr,
-      dt.tgl_pergi, dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
+      SELECT t.id_trans, t.tgl_trans, t.email_cust, t.id_staff, t.status_trans, 
+      t.total_harga, t.metode_byr, t.user_bayar, t.kembalian, dt.tgl_pergi, 
+      dt.tgl_balik, b.id_rute, pw.nama_paket FROM transaksi t 
       INNER JOIN "detailTransaksi" dt ON t.id_trans = dt.id_trans
       INNER JOIN bis b ON dt.id_bis = b.id_bis
       LEFT JOIN paketwisata pw ON t.id_paket = pw.id_paket
@@ -1057,7 +1066,7 @@ async def exportExcel(
 
     # Step 3. Tambahkan Header kaya judul lalu di merge cell
     corporate_name = "BUS_HUB"
-    worksheet.merge_cells('A1:K1') #merge a1 sampe n1
+    worksheet.merge_cells('A1:M1') #merge a1 sampe M1
     corp_cell = worksheet['A1']
     corp_cell.value = corporate_name
 
@@ -1069,7 +1078,7 @@ async def exportExcel(
 
     # Step 5. Tambah Keterangan dibawah nama Korporat yg header di A1
     corporate_ket = "LAPORAN PENJUALAN"
-    worksheet.merge_cells('A2:K2') 
+    worksheet.merge_cells('A2:M2') 
     ket_cell = worksheet['A2']
     ket_cell.value = corporate_ket
 
