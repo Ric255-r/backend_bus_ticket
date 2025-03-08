@@ -1,7 +1,7 @@
 import json
 
 from openpyxl import Workbook
-from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query
+from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi_jwt import (
@@ -705,11 +705,29 @@ async def getFilterTrans(
     return JSONResponse(content={"Error": "Unauhorized"}, status_code=401)
 
 
+active_connection = []
+
+@app.websocket("/ws-transaksi")
+async def wsTransaksi(
+  websocket: WebSocket
+):
+  await websocket.accept()
+  active_connection.append(websocket)
+  try:
+    await websocket.send_text(json.dumps({"message": "Hello from ws Transaksi"}))
+
+    while True:
+      print("Sudah Konek")
+      # Biarkan Koneksi Tetap Nyala
+      await websocket.receive_text()
+  except WebSocketDisconnect:
+    active_connection.remove(websocket)
+
 @app.put('/dataTrans/{id}')
 async def updateTrans(
   id: str,
   request: Request,
-  # user: JwtAuthorizationCredentials = Security(access_security)
+  user: JwtAuthorizationCredentials = Security(access_security)
 ) :
   cursor = conn.cursor()
   try:
@@ -744,6 +762,17 @@ async def updateTrans(
         cursor.execute(q1, (data['status_trans'], data['id_staff'], data['generated_ticket'], data['user_bayar'], data['kembalian'], id))
 
     conn.commit()
+
+    qTransUser = "SELECT * FROM transaksi WHERE id_trans = %s"
+    cursor.execute(qTransUser, (id, ))
+    items = cursor.fetchone() 
+
+    data['id_trans'] = id
+    data['email_cust'] = items[3] #Email User di index ke 3
+
+    # Kirim Data ke Websocket
+    for con in active_connection:
+      await con.send_text(json.dumps(data))
 
     return JSONResponse(content=data, status_code=200)
 
