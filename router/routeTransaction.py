@@ -1,4 +1,5 @@
-from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query
+import json
+from fastapi import FastAPI, File, Form, UploadFile, APIRouter, Request, HTTPException, Security, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi_jwt import (
@@ -340,6 +341,22 @@ async def getTransaksi(
   finally:
     cursor.close()
     
+# untuk Websocket pas user checkout, lalu admin terima.
+user_connection = []
+
+@app.websocket("/ws/user-checkout")
+async def user_ws(
+  websocket: WebSocket
+):
+  await websocket.accept()
+  user_connection.append(websocket)
+  try:
+    # Bikin Koneksi Ttp Nyala
+    await websocket.receive_text()
+
+  except WebSocketDisconnect :
+    user_connection.remove(websocket)
+
 #Khusus untuk formData. untuk field isian, declare variable sebagai parameter fungsi
 @app.post('/checkout')
 async def bayar(
@@ -437,6 +454,17 @@ async def bayar(
       
       # Commit semua transaksi.
       conn.commit()
+
+      # Ini utk aktifkan websocket kirim ke admin
+      for ws_con in user_connection:
+        await ws_con.send_text(
+          json.dumps({
+            "id_trans": id_trans,
+            "status": "PENDING",
+            "message": "Ada Order Baru"
+          })
+        )
+
       return JSONResponse(content={"Pesan": "Transaksi Sukses"}, status_code=200)
     else:
       # 503 = service unavailable

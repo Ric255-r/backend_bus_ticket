@@ -705,14 +705,14 @@ async def getFilterTrans(
     return JSONResponse(content={"Error": "Unauhorized"}, status_code=401)
 
 
-active_connection = []
+admin_connection = []
 
 @app.websocket("/ws-transaksi")
 async def wsTransaksi(
   websocket: WebSocket
 ):
   await websocket.accept()
-  active_connection.append(websocket)
+  admin_connection.append(websocket)
   try:
     await websocket.send_text(json.dumps({"message": "Hello from ws Transaksi"}))
 
@@ -721,7 +721,7 @@ async def wsTransaksi(
       # Biarkan Koneksi Tetap Nyala
       await websocket.receive_text()
   except WebSocketDisconnect:
-    active_connection.remove(websocket)
+    admin_connection.remove(websocket)
 
 @app.put('/dataTrans/{id}')
 async def updateTrans(
@@ -771,7 +771,7 @@ async def updateTrans(
     data['email_cust'] = items[3] #Email User di index ke 3
 
     # Kirim Data ke Websocket
-    for con in active_connection:
+    for con in admin_connection:
       await con.send_text(json.dumps(data))
 
     return JSONResponse(content=data, status_code=200)
