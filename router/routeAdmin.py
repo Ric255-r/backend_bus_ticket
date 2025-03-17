@@ -717,7 +717,7 @@ async def wsTransaksi(
     await websocket.send_text(json.dumps({"message": "Hello from ws Transaksi"}))
 
     while True:
-      print("Sudah Konek")
+      print("Sudah Konek Ws Transaksi")
       # Biarkan Koneksi Tetap Nyala
       await websocket.receive_text()
   except WebSocketDisconnect:
