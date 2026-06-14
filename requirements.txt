@@ -1,0 +1,12 @@
+beautifulsoup4
+authlib
+fastapi
+fastapi-jwt
+openpyxl
+pandas<3
+psycopg2-binary
+python-dateutil
+python-dotenv
+python-multipart
+selenium
+uvicorn[standard]

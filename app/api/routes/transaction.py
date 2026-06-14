@@ -7,37 +7,37 @@ from fastapi_jwt import (
   JwtAuthorizationCredentials,
   JwtRefreshBearer
 )
-from router.routeAdmin import idPaket
+from app.api.routes.admin import idPaket
 
 import pandas as pd
-from jwt_auth import access_security
-from koneksi import conn
+from app.core.security import access_security
+from app.core.database import conn
 import os
 import uuid
 from datetime import datetime
 from typing import Optional, Union
-from utils.fnConvertStr import serialize_data
+from app.utils.convert import serialize_data
 
-app = APIRouter()
+router = APIRouter()
 
 IMAGEDIR = "images/buktiByr/"
 
-@app.get('/buktiByr/{filename}')
+@router.get('/buktiByr/{filename}')
 def fnBuktiByr(filename: str):
   img_path = os.path.join(IMAGEDIR, filename)
   return FileResponse(img_path, media_type='image/png')
 
-@app.get('/fotoPaket/{filename}')
+@router.get('/fotoPaket/{filename}')
 def fnGbrPaket(filename: str):
   img_path = os.path.join("images/gbrpaket", filename)
   return FileResponse(img_path, media_type='image/png')
 
-@app.get('/fotoLogoBis/{filename}')
+@router.get('/fotoLogoBis/{filename}')
 def fnLogoBis(filename: str):
   img_path = os.path.join("images/logoBis", filename)
   return FileResponse(img_path, media_type='image/png')
 
-@app.get('/fotoGbrBis/{filename}')
+@router.get('/fotoGbrBis/{filename}')
 def fnGbrBis(filename: str):
   img_path = os.path.join("images/gbrbis", filename)
   return FileResponse(img_path, media_type='image/png')
@@ -88,7 +88,7 @@ def getLastTrans():
   finally:
     cursor.close()
 
-@app.get('/listbis')
+@router.get('/listbis')
 async def getListBis(
   id_bis: Optional[str] = Query(None)
 ):
@@ -123,7 +123,7 @@ async def getListBis(
   finally:
     cursor.close()
 
-@app.get('/listbis/{nama_bis}')
+@router.get('/listbis/{nama_bis}')
 async def listBisParameter(nama_bis: Optional[str] = None):
   cursor = conn.cursor()
   try:
@@ -162,7 +162,7 @@ async def listBisParameter(nama_bis: Optional[str] = None):
 # ValueError: Out of range float values are not JSON compliant
 # Langsung hajar konversi ke string aja.
 
-@app.get('/cekpaket')
+@router.get('/cekpaket')
 async def getIsiPaket(
   id_paket: Optional[str] = Query(None)
 ):
@@ -216,7 +216,7 @@ async def getIsiPaket(
   finally:
     cursor.close()
 
-@app.get('/kota')
+@router.get('/kota')
 async def getKota():
   cursor = conn.cursor()
   try:
@@ -247,7 +247,7 @@ async def getKota():
   finally:
     cursor.close()
 
-@app.get('/checkout')
+@router.get('/checkout')
 async def getTransaksi(
   status: Optional[str] = Query(None), # Untuk ambil queryString
   user: JwtAuthorizationCredentials = Security(access_security),
@@ -298,7 +298,7 @@ async def getTransaksi(
   finally:
     cursor.close()
 
-@app.get('/checkout/{id_trans}')
+@router.get('/checkout/{id_trans}')
 async def getTransaksi(
   id_trans: str,
   user: JwtAuthorizationCredentials = Security(access_security),
@@ -344,7 +344,7 @@ async def getTransaksi(
 # untuk Websocket pas user checkout, lalu admin terima.
 user_connection = []
 
-@app.websocket("/ws/user-checkout")
+@router.websocket("/ws/user-checkout")
 async def user_ws(
   websocket: WebSocket
 ):
@@ -358,7 +358,7 @@ async def user_ws(
     user_connection.remove(websocket)
 
 #Khusus untuk formData. untuk field isian, declare variable sebagai parameter fungsi
-@app.post('/checkout')
+@router.post('/checkout')
 async def bayar(
   buktiByr: Optional[UploadFile] = File(None),
   user: JwtAuthorizationCredentials = Security(access_security),

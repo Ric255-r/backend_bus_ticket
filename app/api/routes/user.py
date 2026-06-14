@@ -2,26 +2,26 @@ from typing import Optional
 import uuid
 from fastapi import APIRouter, File, Form, Request, HTTPException, Security, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
-from koneksi import conn
+from app.core.database import conn
 from fastapi_jwt import (
   JwtAccessBearerCookie,
   JwtAuthorizationCredentials,
   JwtRefreshBearer
 )
-from jwt_auth import access_security, refresh_security
+from app.core.security import access_security, refresh_security
 import pandas as pd
 import os
 
-app = APIRouter()
+router = APIRouter()
 
 IMAGEDIR = "images/profile"
 
-@app.get('/fotoprofile/{filename}')
+@router.get('/fotoprofile/{filename}')
 def fnProfile(filename: str):
   img_path = os.path.join(IMAGEDIR, filename)
   return FileResponse(img_path, media_type='image/png')
 
-@app.get('/user')
+@router.get('/user')
 def fnUser(
   user: JwtAuthorizationCredentials = Security(access_security)
 ) :
@@ -49,7 +49,7 @@ def fnUser(
 
   return subject
 
-@app.post('/register')
+@router.post('/register')
 async def fnRegis(
   request: Request
 ) :
@@ -81,7 +81,7 @@ async def fnRegis(
   finally:
     cursor.close()
 
-@app.post('/login')
+@router.post('/login')
 async def fnLogin(
   request: Request
 ):
@@ -136,7 +136,7 @@ async def fnLogin(
   finally:
     cursor.close()
 
-@app.put('/updateProfile')
+@router.put('/updateProfile')
 async def updateProfile(
   fotoProfile: Optional[UploadFile] = File(None),
   username: str = Form(...),
@@ -192,7 +192,7 @@ async def updateProfile(
   finally:
     cursor.close()
 
-@app.put('/changePass')
+@router.put('/changePass')
 async def fnChangePass(
   request: Request,
   user: JwtAuthorizationCredentials = Security(access_security),

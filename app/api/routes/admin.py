@@ -10,8 +10,8 @@ from fastapi_jwt import (
   JwtRefreshBearer
 )
 import pandas as pd
-from jwt_auth import access_security
-from koneksi import conn
+from app.core.security import access_security
+from app.core.database import conn
 import os
 import uuid
 from datetime import datetime
@@ -20,10 +20,10 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils.dataframe import dataframe_to_rows
-from utils.fnConvertStr import serialize_data
-from utils.fnWebScrapping import scraper
+from app.utils.convert import serialize_data
+from app.utils.web_scraping import scraper
 
-app = APIRouter()
+router = APIRouter()
 
 #get date now - 1 bln
 def getDateOneMonthAgo():
@@ -33,7 +33,7 @@ def getDateOneMonthAgo():
 
   return str(one_month_ago)
 
-# @app.get('/data-scraping')
+# @router.get('/data-scraping')
 # def scrappedData():
 #   data = scraper("https://www.traveloka.com/id-id/explore/activities/wisata-pontianak-yang-lagi-hits-ta/321888")
 
@@ -41,10 +41,8 @@ def getDateOneMonthAgo():
 
 
 #Bagian Dashboard
-@app.get('/dashboard')
-async def getDashboard(
-  user: JwtAuthorizationCredentials = Security(access_security)
-) :
+@router.get('/dashboard')
+async def getDashboard() :
   try:
     cursor = conn.cursor()
 
@@ -142,7 +140,7 @@ async def getDashboard(
 
 
 #Bagian Rute
-@app.get('/rute')
+@router.get('/rute')
 async def getRute(
   id_rute: Optional[str] = Query(None),
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -171,7 +169,7 @@ async def getRute(
   finally:
     cursor.close()
 
-@app.post('/insertRute')
+@router.post('/insertRute')
 async def insertRute(
   request: Request,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -200,7 +198,7 @@ async def insertRute(
   finally:
     cursor.close()
 
-@app.put('/editRoute/{id}')
+@router.put('/editRoute/{id}')
 async def editRute(
   id: str,
   request: Request,
@@ -231,7 +229,7 @@ async def editRute(
     cursor.close()
 
 
-@app.delete('/rute/{id}')
+@router.delete('/rute/{id}')
 async def deleteRute(
   id: str,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -254,7 +252,7 @@ async def deleteRute(
 
 #yang getnya ada di ruteTransaksi.py
 #Start bagian insertBis
-@app.post('/insertBis')
+@router.post('/insertBis')
 async def insertBis(
   request: Request,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -311,7 +309,7 @@ async def insertBis(
   finally:
     cursor.close()
 
-@app.put('/updateBis/{id}')
+@router.put('/updateBis/{id}')
 async def updateBis(
   id:str,
   request: Request,
@@ -394,7 +392,7 @@ async def updateBis(
   finally:
     cursor.close()
 
-@app.delete('/listbis/{id}')
+@router.delete('/listbis/{id}')
 async def deleteBis(
   id: str,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -416,7 +414,7 @@ async def deleteBis(
 #End Bagian insertBis
 
 # Start Stok Tiket
-@app.get('/stoktiket')
+@router.get('/stoktiket')
 async def getStokTiket(
   id_bis: Optional[str] = Query(None)
 ):
@@ -452,7 +450,7 @@ async def getStokTiket(
   finally:
     cursor.close()
 
-@app.post('/stoktiket')
+@router.post('/stoktiket')
 async def insertStokTiket(
   request: Request,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -478,7 +476,7 @@ async def insertStokTiket(
   finally:
     cursor.close()
 
-@app.put('/stoktiket/{id}')
+@router.put('/stoktiket/{id}')
 async def updateStokTiket(
   id:str,
   request: Request,
@@ -508,7 +506,7 @@ async def updateStokTiket(
 
 
 #Start Bagian Kelas Bis
-@app.get('/kelasbis')
+@router.get('/kelasbis')
 async def getKelasBis(
   id_kelas: Optional[str] = Query(None)
 ):
@@ -537,7 +535,7 @@ async def getKelasBis(
   finally:
     cursor.close()
 
-@app.put('/kelasbis/{id}')
+@router.put('/kelasbis/{id}')
 async def updateKelasBis(
   id:str,
   request: Request,
@@ -565,7 +563,7 @@ async def updateKelasBis(
     cursor.close()
 
 
-@app.post('/kelasbis')
+@router.post('/kelasbis')
 async def insertKelasBis(
   request: Request,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -591,7 +589,7 @@ async def insertKelasBis(
   finally:
     cursor.close()
 
-@app.delete('/kelasbis/{id}')
+@router.delete('/kelasbis/{id}')
 async def deleteKelasBis(
   id: str,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -613,7 +611,7 @@ async def deleteKelasBis(
 #End Bagian KelasBis
 
 # Start Transaksi
-@app.get('/dataTrans')
+@router.get('/dataTrans')
 async def getAllTrans(
   id: Optional[str] = Query(None), # Untuk ambil queryString
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -663,7 +661,7 @@ async def getAllTrans(
     return JSONResponse(content={"Error": "Unauhorized"}, status_code=401)
 
 
-@app.get('/filterDataTrans/{mode}')
+@router.get('/filterDataTrans/{mode}')
 async def getFilterTrans(
   mode: str,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -707,7 +705,7 @@ async def getFilterTrans(
 
 admin_connection = []
 
-@app.websocket("/ws-transaksi")
+@router.websocket("/ws-transaksi")
 async def wsTransaksi(
   websocket: WebSocket
 ):
@@ -723,7 +721,7 @@ async def wsTransaksi(
   except WebSocketDisconnect:
     admin_connection.remove(websocket)
 
-@app.put('/dataTrans/{id}')
+@router.put('/dataTrans/{id}')
 async def updateTrans(
   id: str,
   request: Request,
@@ -783,7 +781,7 @@ async def updateTrans(
     cursor.close()
 
 
-@app.delete('/dataTrans/{id}')
+@router.delete('/dataTrans/{id}')
 async def updateTrans(
   id: str,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -863,7 +861,7 @@ def fnIdBenefit():
   finally:
     cursor.close()
 
-@app.post('/insertPaket')
+@router.post('/insertPaket')
 async def isiPaket(
   request: Request,
   user : JwtAuthorizationCredentials = Security(access_security),
@@ -946,7 +944,7 @@ async def isiPaket(
   finally:
     cursor.close()
 
-@app.put('/updatePaket/{id_paket}')
+@router.put('/updatePaket/{id_paket}')
 async def updatePaket(
   id_paket: str,
   request: Request,
@@ -1040,7 +1038,7 @@ async def updatePaket(
   finally:
     cursor.close()
 
-@app.delete('/paket/{id}')
+@router.delete('/paket/{id}')
 async def delpaket(
   id: str,
   user: JwtAuthorizationCredentials = Security(access_security)
@@ -1060,7 +1058,7 @@ async def delpaket(
   finally:
     cursor.close()
 
-@app.get('/export_trans')
+@router.get('/export_trans')
 async def exportExcel(
   tglawal: str = Query(...),
   tglakhir: str = Query(...)
