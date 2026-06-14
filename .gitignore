@@ -1,2 +1,14 @@
 koneksi_config.txt
 db_bushub.sql
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment and local configuration
+.venv/
+.env
+
+# Tooling and runtime output
+.pytest_cache/
+*.log
