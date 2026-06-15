@@ -1,5 +1,5 @@
 def serialize_data(data):
-  converted_data = data
+  converted_data = []
   for item in data:
     converted_item = []
     
