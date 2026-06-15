@@ -350,3 +350,143 @@ async def nearby_bus_stops(
     "count": min(limit, len(items)),
     "items": items[:limit],
   }
+
+
+POI_CACHE_TTL_SECONDS = 600
+poi_cache = {}
+
+
+def _normalize_poi(element, user_latitude, user_longitude):
+  center = element.get("center", {})
+  latitude = element.get("lat", center.get("lat"))
+  longitude = element.get("lon", center.get("lon"))
+  if latitude is None or longitude is None:
+    return None
+
+  tags = element.get("tags", {})
+  name = tags.get("name") or tags.get("ref") or tags.get("amenity") or tags.get("tourism") or "Tempat tanpa nama"
+
+  return {
+    "osm_id": f"{element.get('type', 'node')}/{element.get('id')}",
+    "name": name,
+    "latitude": float(latitude),
+    "longitude": float(longitude),
+    "distance_km": round(
+      _distance_km(
+        user_latitude,
+        user_longitude,
+        float(latitude),
+        float(longitude),
+      ),
+      3,
+    ),
+    "amenity": tags.get("amenity"),
+    "tourism": tags.get("tourism"),
+    "leisure": tags.get("leisure"),
+    "opening_hours": tags.get("opening_hours"),
+    "phone": tags.get("phone"),
+    "website": tags.get("website"),
+  }
+
+
+@router.get("/poi-terdekat")
+async def nearby_pois(
+  latitude: float = Query(..., ge=-90, le=90),
+  longitude: float = Query(..., ge=-180, le=180),
+  category: str = Query("kuliner"),
+  radius: int = Query(3000, ge=500, le=10000),
+  limit: int = Query(20, ge=1, le=50),
+):
+  category = category.lower()
+  # Map categories to OSM filters
+  category_filters = {
+    "kuliner": [
+      'nwr["amenity"="restaurant"]',
+      'nwr["amenity"="cafe"]',
+      'nwr["amenity"="fast_food"]',
+      'nwr["amenity"="food_court"]',
+    ],
+    "ibadah": [
+      'nwr["amenity"="place_of_worship"]',
+    ],
+    "kesehatan": [
+      'nwr["amenity"="hospital"]',
+      'nwr["amenity"="pharmacy"]',
+      'nwr["amenity"="clinic"]',
+      'nwr["amenity"="doctors"]',
+    ],
+    "penginapan": [
+      'nwr["tourism"="hotel"]',
+      'nwr["tourism"="motel"]',
+      'nwr["tourism"="guest_house"]',
+      'nwr["tourism"="hostel"]',
+    ],
+    "atm": [
+      'nwr["amenity"="atm"]',
+      'nwr["amenity"="bank"]',
+    ],
+    "wisata": [
+      'nwr["tourism"="attraction"]',
+      'nwr["tourism"="viewpoint"]',
+      'nwr["tourism"="museum"]',
+      'nwr["leisure"="park"]',
+    ]
+  }
+
+  filters = category_filters.get(category, category_filters["kuliner"])
+  
+  # Build query
+  statements = "\n".join([f"{f}(around:{radius},{latitude},{longitude});" for f in filters])
+  
+  overpass_query = f"""
+    [out:json][timeout:20];
+    (
+      {statements}
+    );
+    out center tags;
+  """
+
+  # Cache key
+  cache_key = (round(latitude, 3), round(longitude, 3), category, radius)
+  cached = poi_cache.get(cache_key)
+  if cached and monotonic() - cached["created_at"] < POI_CACHE_TTL_SECONDS:
+    return {
+      "source": "OpenStreetMap via Overpass API",
+      "cached": True,
+      "category": category,
+      "count": min(limit, len(cached["items"])),
+      "items": cached["items"][:limit],
+    }
+
+  try:
+    timeout = httpx.Timeout(25.0, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+      response = await client.post(
+        OVERPASS_URL,
+        data={"data": overpass_query},
+        headers={"User-Agent": OVERPASS_USER_AGENT},
+      )
+      response.raise_for_status()
+      payload = response.json()
+  except (httpx.HTTPError, ValueError) as error:
+    raise HTTPException(
+      status_code=502,
+      detail="Data POI dari OpenStreetMap sedang tidak tersedia.",
+    ) from error
+
+  unique_items = {}
+  for element in payload.get("elements", []):
+    item = _normalize_poi(element, latitude, longitude)
+    if item is not None:
+      unique_items[item["osm_id"]] = item
+
+  items = sorted(unique_items.values(), key=lambda item: item["distance_km"])
+  poi_cache[cache_key] = {"created_at": monotonic(), "items": items}
+
+  return {
+    "source": "OpenStreetMap via Overpass API",
+    "cached": False,
+    "category": category,
+    "count": min(limit, len(items)),
+    "items": items[:limit],
+  }
