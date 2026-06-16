@@ -27,10 +27,15 @@ import os
 router = APIRouter()
 
 IMAGEDIR = "images/profile"
-OVERPASS_URL = os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
 OVERPASS_USER_AGENT = os.getenv(
   "OVERPASS_USER_AGENT", "BusHub/1.0 (portfolio application)"
 )
+OVERPASS_URLS = [
+  os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter"),
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+]
 POI_CACHE_TTL_SECONDS = 600
 poi_cache = {}
 
@@ -370,21 +375,32 @@ async def nearby_pois(
       "items": cached["items"][:limit],
     }
 
-  try:
-    timeout = httpx.Timeout(25.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-      response = await client.post(
-        OVERPASS_URL,
-        data={"data": overpass_query},
-        headers={"User-Agent": OVERPASS_USER_AGENT},
-      )
-      response.raise_for_status()
-      payload = response.json()
-  except (httpx.HTTPError, ValueError) as error:
+  payload = None
+  last_error = None
+
+  for url in OVERPASS_URLS:
+    try:
+      timeout = httpx.Timeout(15.0, connect=5.0)
+      async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(
+          url,
+          data={"data": overpass_query},
+          headers={"User-Agent": OVERPASS_USER_AGENT},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        break
+    except (httpx.HTTPError, ValueError) as error:
+      last_error = error
+      print(f"[OVERPASS_WARNING] Failed to query {url}: {error}")
+      continue
+
+  if payload is None:
+    print(f"[OVERPASS_ERROR] All Overpass API endpoints failed. Last error: {last_error}")
     raise HTTPException(
       status_code=502,
       detail="Data POI dari OpenStreetMap sedang tidak tersedia.",
-    ) from error
+    ) from last_error
 
   unique_items = {}
   for element in payload.get("elements", []):
